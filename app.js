@@ -7,7 +7,7 @@ exports.handler = function (event, context) {
     /// <param name='event' value='{RequestType:"",ResourceType:""}'>Event raised.</param>
     /// <returns value="null">Nothing.</returns>
     
-    if (event == null) {
+    if (!event) {
         context.fail('No event object');
         context.done();
     }
@@ -55,6 +55,13 @@ exports.handler = function (event, context) {
     });
 };
 
+function GetAccountIdFromArn(arn){
+    return arn.replace(/^arn:aws:([^:]+):([^:]*):([0-9]+):.*$/, "$3");
+}
+function GetRegionFromArn(arn){
+    return arn.replace(/^arn:aws:([^:]+):([^:]*):([0-9]+):.*$/, "$2");
+}
+
 
 function worker(event, context) {
     if (!(this instanceof worker))
@@ -71,7 +78,7 @@ function worker(event, context) {
 	
 	this.startProcessRecords = function (records, cb)
 	{
-		if (records.length == 0 ) {
+		if (records.length === 0 ) {
 			process.nextTick(function () { cb(null, null); });
 			return;
 		}
@@ -85,7 +92,7 @@ function worker(event, context) {
 				cb(err, data);
 			});
 		});
-	}
+	};
 
 	this.processRecord = function (record, cb)
 	{
@@ -101,6 +108,9 @@ function worker(event, context) {
 			}
 			console.log("Event:", msg.Event);
 			if ( msg.Event == "autoscaling:EC2_INSTANCE_LAUNCH" ){
+				var arn = msg.AutoScalingGroupARN;
+				var region = GetRegionFromArn(arn);
+				that.ec2 = new AWS.EC2({region: region});
 				that.processInstanceId( msg.EC2InstanceId, function(err, data) {
 					cb(err,data);
 					});
@@ -111,10 +121,13 @@ function worker(event, context) {
 		else{
 			cb({"Error": "Unknown event source" });
 		}
-	}
+	};
 
 	
     this.startCustomResource = function (cb) {
+		var stackId = event.StackId;
+		var region = GetRegionFromArn(stackId);
+		that.ec2 = new AWS.EC2({region: region});
 		var expr = event.ResourceProperties.Match;
 		if (expr) {
 			that.expr = new RegExp(expr);
@@ -133,7 +146,7 @@ function worker(event, context) {
     };
     
     this.processInstanceIds = function (instanceIds, cb) {
-        if (instanceIds.length == 0) {
+        if (instanceIds.length === 0) {
             process.nextTick(function () { cb(null, []); });
             return;
         }
@@ -152,7 +165,7 @@ function worker(event, context) {
                     data.push(dataI);
                     cb(err, data);
                 }
-            })
+            });
         });
     };
     
@@ -163,7 +176,7 @@ function worker(event, context) {
                 cb(err, null);
                 return;
             }
-            if (data.Reservations.length == 0) {
+            if (data.Reservations.length === 0) {
                 cb({ "Error": "Instance not found:" + InstanceId }, null);
                 return;
             }
@@ -194,7 +207,7 @@ function worker(event, context) {
     };
     
     this.processEbs = function (instance, ebsArray, cb) {
-        if (ebsArray.length == 0) {
+        if (ebsArray.length === 0) {
             process.nextTick(function () { cb(null, null); });
             return;
         }
